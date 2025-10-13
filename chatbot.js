@@ -3,6 +3,16 @@ class MahmudulAssistant {
         this.isOpen = false;
         this.isTyping = false;
         this.conversationContext = [];
+        this.messageHistory = [];
+        this.userName = null;
+        this.currentTopic = null;
+        this.suggestedQuestions = [
+            "What are Mahmudul's main skills?",
+            "Tell me about his AI projects",
+            "How can I hire him?",
+            "What's his experience?",
+            "Show me his portfolio"
+        ];
         
         // Initialize chatbot
         this.init();
@@ -208,20 +218,34 @@ class MahmudulAssistant {
         this.sendBtn = document.getElementById('chatbot-send');
         this.typingIndicator = document.getElementById('typing-indicator');
         
-        // Event listeners
+        // Enhanced event listeners
         this.toggleBtn.addEventListener('click', () => this.toggleChat());
         this.closeBtn.addEventListener('click', () => this.closeChat());
         this.sendBtn.addEventListener('click', () => this.sendMessage());
+        
+        // Enhanced input handling
         this.inputField.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.sendMessage();
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.sendMessage();
+            }
         });
+        
+        // Auto-suggestions on focus
+        this.inputField.addEventListener('focus', () => this.showInputSuggestions());
+        this.inputField.addEventListener('input', () => this.handleTyping());
         
         // Auto-focus input when chat opens
         this.chatWindow.addEventListener('transitionend', () => {
             if (this.isOpen) {
-                this.inputField.focus();
+                setTimeout(() => {
+                    this.inputField.focus();
+                }, 100);
             }
         });
+        
+        // Initialize welcome message with suggestions
+        this.showWelcomeMessage();
     }
 
     toggleChat() {
@@ -235,54 +259,194 @@ class MahmudulAssistant {
     openChat() {
         this.isOpen = true;
         this.chatWindow.classList.add('show');
-        document.getElementById('chat-notification').style.display = 'none';
+        const notification = document.getElementById('chat-notification');
+        if (notification) {
+            notification.style.display = 'none';
+        }
+        
+        // Add entrance animation
         setTimeout(() => {
             this.inputField.focus();
+            // Show quick suggestions if first time
+            if (this.messageHistory.length <= 1) {
+                this.showQuickSuggestions();
+            }
         }, 300);
     }
 
     closeChat() {
         this.isOpen = false;
         this.chatWindow.classList.remove('show');
+        
+        // Save conversation for next time
+        this.saveConversation();
+    }
+    
+    showWelcomeMessage() {
+        // Clear any existing messages except the default welcome
+        const existingMessages = this.messagesContainer.querySelectorAll('.message.bot-message');
+        if (existingMessages.length === 1) {
+            // Enhance the existing welcome message
+            const welcomeContent = existingMessages[0].querySelector('.message-content p');
+            if (welcomeContent) {
+                welcomeContent.innerHTML = `
+                    Hi there! 👋 I'm Mahmudul's AI assistant. I know everything about him - his skills, projects, experience, and more! 
+                    <br><br>
+                    <strong>Popular questions:</strong>
+                    <br>• What are his main skills?
+                    <br>• Tell me about his AI projects
+                    <br>• How can I contact/hire him?
+                    <br>• What's his experience?
+                    <br><br>
+                    Feel free to ask me anything! 🚀
+                `;
+            }
+        }
+    }
+    
+    showQuickSuggestions() {
+        if (this.messageHistory.length > 1) return; // Don't show if conversation has started
+        
+        setTimeout(() => {
+            const suggestionsHTML = `
+                <div class="quick-suggestions">
+                    <p><small>💡 <strong>Quick questions you might ask:</strong></small></p>
+                    ${this.suggestedQuestions.map(q => `<button class="suggestion-btn" onclick="chatbot.askQuestion('${q}')">${q}</button>`).join('')}
+                </div>
+            `;
+            
+            this.addMessage(suggestionsHTML, 'bot', true);
+        }, 1500);
+    }
+    
+    askQuestion(question) {
+        this.inputField.value = question;
+        this.sendMessage();
     }
 
     async sendMessage() {
         const message = this.inputField.value.trim();
         if (!message || this.isTyping) return;
 
-        // Add user message
+        // Remove suggestions if they exist
+        this.removeSuggestions();
+
+        // Detect user name if mentioned
+        this.detectUserName(message);
+
+        // Add user message with enhanced styling
         this.addMessage(message, 'user');
         this.inputField.value = '';
+        this.messageHistory.push({ type: 'user', content: message, timestamp: new Date() });
 
-        // Show typing indicator
+        // Show enhanced typing indicator
         this.showTyping();
 
-        // Generate response
+        // Generate context-aware response
         const response = await this.generateResponse(message);
         
-        // Hide typing indicator and show response
+        // Hide typing indicator and show response with natural delay
+        const typingDelay = Math.min(message.length * 50 + 800, 3000); // Dynamic delay based on message length
         setTimeout(() => {
             this.hideTyping();
             this.addMessage(response, 'bot');
-        }, 1000 + Math.random() * 1500); // Random delay for more natural feel
+            this.messageHistory.push({ type: 'bot', content: response, timestamp: new Date() });
+            
+            // Show follow-up suggestions if appropriate
+            this.showFollowUpSuggestions(message, response);
+        }, typingDelay);
+    }
+    
+    detectUserName(message) {
+        const namePatterns = [
+            /my name is ([a-zA-Z]+)/i,
+            /i'm ([a-zA-Z]+)/i,
+            /i am ([a-zA-Z]+)/i,
+            /call me ([a-zA-Z]+)/i
+        ];
+        
+        for (const pattern of namePatterns) {
+            const match = message.match(pattern);
+            if (match) {
+                this.userName = match[1];
+                break;
+            }
+        }
+    }
+    
+    removeSuggestions() {
+        const suggestions = this.messagesContainer.querySelector('.quick-suggestions');
+        if (suggestions) {
+            suggestions.parentElement.remove();
+        }
+    }
+    
+    showFollowUpSuggestions(userMessage, botResponse) {
+        // Dynamic follow-up suggestions based on conversation
+        let followUps = [];
+        
+        if (userMessage.toLowerCase().includes('skills') || userMessage.toLowerCase().includes('expertise')) {
+            followUps = ["Tell me about his AI projects", "What's his experience?", "How can I hire him?"];
+        } else if (userMessage.toLowerCase().includes('projects') || userMessage.toLowerCase().includes('portfolio')) {
+            followUps = ["What are his technical skills?", "How can I contact him?", "Tell me about his experience"];
+        } else if (userMessage.toLowerCase().includes('hire') || userMessage.toLowerCase().includes('contact')) {
+            followUps = ["What services does he offer?", "What are his rates?", "Show me his portfolio"];
+        } else if (userMessage.toLowerCase().includes('experience') || userMessage.toLowerCase().includes('background')) {
+            followUps = ["What are his main skills?", "Show me his projects", "How can I hire him?"];
+        } else {
+            // Default follow-ups
+            followUps = ["Tell me more about his AI work", "How can I contact him?", "What services does he offer?"];
+        }
+        
+        if (followUps.length > 0 && Math.random() > 0.3) { // 70% chance to show follow-ups
+            setTimeout(() => {
+                const followUpHTML = `
+                    <div class="follow-up-suggestions">
+                        <p><small>💭 <strong>You might also want to know:</strong></small></p>
+                        ${followUps.slice(0, 3).map(q => `<button class="suggestion-btn small" onclick="chatbot.askQuestion('${q}')">${q}</button>`).join('')}
+                    </div>
+                `;
+                this.addMessage(followUpHTML, 'bot', true);
+            }, 2000);
+        }
     }
 
-    addMessage(content, type) {
+    addMessage(content, type, isHTML = false) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}-message`;
 
         const avatar = document.createElement('div');
         avatar.className = 'message-avatar';
-        avatar.innerHTML = `<img src="me.jpg" alt="${type === 'bot' ? 'Assistant' : 'User'}">`;
+        
+        if (type === 'bot') {
+            avatar.innerHTML = `<img src="me.jpg" alt="Mahmudul's Assistant" title="Mahmudul's AI Assistant">`;
+        } else {
+            avatar.innerHTML = `<div class="user-avatar"><i class="fa fa-user"></i></div>`;
+        }
 
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
-        messageContent.innerHTML = `<p>${content}</p>`;
+        
+        if (isHTML) {
+            messageContent.innerHTML = content;
+        } else {
+            // Process message for better formatting
+            const formattedContent = this.formatMessage(content);
+            messageContent.innerHTML = formattedContent;
+        }
 
         const messageTime = document.createElement('div');
         messageTime.className = 'message-time';
         messageTime.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+        // Add message status for user messages
+        if (type === 'user') {
+            const messageStatus = document.createElement('div');
+            messageStatus.className = 'message-status';
+            messageStatus.innerHTML = '<i class="fa fa-check" title="Delivered"></i>';
+        }
+
+        // Arrange elements based on message type
         if (type === 'user') {
             messageDiv.appendChild(messageContent);
             messageDiv.appendChild(avatar);
@@ -292,30 +456,188 @@ class MahmudulAssistant {
         }
         messageDiv.appendChild(messageTime);
 
+        // Add entrance animation
+        messageDiv.style.opacity = '0';
+        messageDiv.style.transform = 'translateY(20px)';
         this.messagesContainer.appendChild(messageDiv);
-        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        
+        // Trigger animation
+        setTimeout(() => {
+            messageDiv.style.transition = 'all 0.3s ease';
+            messageDiv.style.opacity = '1';
+            messageDiv.style.transform = 'translateY(0)';
+        }, 50);
+
+        this.scrollToBottom();
 
         // Add to conversation context
         this.conversationContext.push({ type, content, timestamp: new Date() });
     }
+    
+    formatMessage(content) {
+        // Enhanced message formatting
+        let formatted = content
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+            .replace(/\*(.*?)\*/g, '<em>$1</em>') // Italic
+            .replace(/`(.*?)`/g, '<code>$1</code>') // Code
+            .replace(/\n/g, '<br>') // Line breaks
+            .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>'); // Links
+        
+        // Add emoji enhancements
+        formatted = this.enhanceWithEmojis(formatted);
+        
+        // Personalize with user name if available
+        if (this.userName) {
+            formatted = formatted.replace(/\bYou\b/g, this.userName);
+        }
+        
+        return `<p>${formatted}</p>`;
+    }
+    
+    enhanceWithEmojis(text) {
+        const emojiMap = {
+            'email': '📧',
+            'phone': '📱',
+            'contact': '📞',
+            'github': '💻',
+            'projects': '🚀',
+            'skills': '💪',
+            'AI': '🤖',
+            'machine learning': '🧠',
+            'python': '🐍',
+            'javascript': '⚡',
+            'web': '🌐',
+            'chatbot': '💬'
+        };
+        
+        for (const [keyword, emoji] of Object.entries(emojiMap)) {
+            const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+            text = text.replace(regex, `${emoji} ${keyword}`);
+        }
+        
+        return text;
+    }
+    
+    scrollToBottom() {
+        setTimeout(() => {
+            this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        }, 100);
+    }
 
     showTyping() {
         this.isTyping = true;
+        
+        // Enhanced typing indicator
+        this.typingIndicator.innerHTML = `
+            <div class="typing-avatar">
+                <img src="me.jpg" alt="Assistant typing">
+            </div>
+            <div class="typing-content">
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div class="typing-text">Mahmudul's assistant is thinking...</div>
+            </div>
+        `;
+        
         this.typingIndicator.style.display = 'flex';
-        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        this.typingIndicator.style.opacity = '0';
+        this.typingIndicator.style.transform = 'translateY(10px)';
+        
+        setTimeout(() => {
+            this.typingIndicator.style.transition = 'all 0.3s ease';
+            this.typingIndicator.style.opacity = '1';
+            this.typingIndicator.style.transform = 'translateY(0)';
+        }, 50);
+        
+        this.scrollToBottom();
     }
 
     hideTyping() {
         this.isTyping = false;
-        this.typingIndicator.style.display = 'none';
+        
+        if (this.typingIndicator) {
+            this.typingIndicator.style.opacity = '0';
+            this.typingIndicator.style.transform = 'translateY(-10px)';
+            
+            setTimeout(() => {
+                this.typingIndicator.style.display = 'none';
+            }, 300);
+        }
+    }
+    
+    handleTyping() {
+        // Show "user is typing" feedback
+        const inputLength = this.inputField.value.length;
+        if (inputLength > 0) {
+            this.sendBtn.style.backgroundColor = '#ec1839';
+            this.sendBtn.style.transform = 'scale(1.1)';
+        } else {
+            this.sendBtn.style.backgroundColor = '';
+            this.sendBtn.style.transform = 'scale(1)';
+        }
+    }
+    
+    showInputSuggestions() {
+        // Add input placeholder suggestions
+        if (this.inputField.value === '') {
+            const suggestions = [
+                "Ask me about Mahmudul's skills...",
+                "What projects has he built?",
+                "How can I hire him?",
+                "Tell me about his experience...",
+                "What are his contact details?"
+            ];
+            
+            let index = 0;
+            const rotatePlaceholder = () => {
+                this.inputField.placeholder = suggestions[index];
+                index = (index + 1) % suggestions.length;
+            };
+            
+            rotatePlaceholder();
+            if (!this.placeholderInterval) {
+                this.placeholderInterval = setInterval(rotatePlaceholder, 3000);
+            }
+        }
+    }
+    
+    saveConversation() {
+        // Save conversation to localStorage for persistence
+        if (this.messageHistory.length > 0) {
+            localStorage.setItem('chatbot_conversation', JSON.stringify(this.messageHistory));
+            localStorage.setItem('chatbot_user_name', this.userName || '');
+        }
+    }
+    
+    loadConversation() {
+        // Load previous conversation
+        const saved = localStorage.getItem('chatbot_conversation');
+        const savedName = localStorage.getItem('chatbot_user_name');
+        
+        if (saved) {
+            this.messageHistory = JSON.parse(saved);
+            this.userName = savedName || null;
+        }
     }
 
     async generateResponse(userMessage) {
         const message = userMessage.toLowerCase();
         
-        // Greeting patterns
+        // Context-aware responses
+        this.currentTopic = this.detectTopic(message);
+        
+        // Personalized greeting with name
         if (this.containsAny(message, ['hello', 'hi', 'hey', 'greetings', 'good morning', 'good afternoon', 'good evening'])) {
-            return this.getRandomResponse(this.responsePatterns.greetings);
+            const personalizedGreetings = [
+                `Hello${this.userName ? ` ${this.userName}` : ''}! 👋 I'm Mahmudul's AI assistant. I know everything about him - his skills, projects, experience, and more! What would you like to know?`,
+                `Hi there${this.userName ? ` ${this.userName}` : ''}! 😊 Great to meet you! I'm here to tell you all about Mahmudul and his amazing work. How can I help you today?`,
+                `Hey${this.userName ? ` ${this.userName}` : ''}! 🌟 Welcome! I'm Mahmudul's personal assistant. Ready to discover what makes him an exceptional AI/ML engineer?`,
+                `Greetings${this.userName ? ` ${this.userName}` : ''}! ✨ I'm excited to share everything about Mahmudul's expertise and projects. What interests you most?`
+            ];
+            return this.getRandomResponse(personalizedGreetings);
         }
 
         // Goodbye patterns
@@ -351,48 +673,64 @@ class MahmudulAssistant {
             return `I'm ${this.knowledgeBase.personal.fullName}'s AI assistant! 🤖 Mahmudul is a ${this.knowledgeBase.personal.title} from ${this.knowledgeBase.personal.location}. He's ${this.knowledgeBase.personal.age} years old, born on ${this.knowledgeBase.personal.birthday}. He's incredibly ${this.knowledgeBase.personal.personality.split(', ').join(', ')} and loves ${this.knowledgeBase.personal.hobbies.slice(0,3).join(', ')}. Currently working as a ${this.knowledgeBase.experience[0].position} at ${this.knowledgeBase.experience[0].company}. What specific aspect would you like to know more about?`;
         }
 
-        // Skills inquiry
-        if (this.containsAny(message, ['skills', 'programming', 'technologies', 'what can he do', 'expertise'])) {
+        // Skills inquiry - Detailed breakdown of Mahmudul's expertise
+        if (this.containsAny(message, ['skills', 'programming', 'technologies', 'what can he do', 'expertise', 'abilities', 'technical'])) {
             const skills = this.knowledgeBase.skills;
-            return `Mahmudul is incredibly skilled! 💪 His programming languages include ${skills.programming.join(', ')}. He's especially strong in AI/ML with ${skills.aiml.join(', ')}. His skill levels: NLP (${skills.percentages.NLP}), Machine Learning (${skills.percentages['Machine Learning']}), LLM (${skills.percentages.LLM}), Python (${skills.percentages.Python}), and SQL (${skills.percentages.SQL}). He also specializes in ${skills.specialties.slice(0,4).join(', ')}. Is there a specific technology you'd like to know more about?`;
+            return `**Mahmudul's Technical Expertise** is truly exceptional! 💪\n\n🔥 **Programming Languages** that **Mahmudul** masters:\n${skills.programming.map(lang => `• ${lang}`).join('\n')}\n\n🤖 **AI/ML Specializations** where **Mahmudul** excels:\n${skills.aiml.map(skill => `• ${skill}`).join('\n')}\n\n📊 **Mahmudul's Skill Proficiency Levels**:\n• NLP (Natural Language Processing): ${skills.percentages.NLP}\n• Machine Learning: ${skills.percentages['Machine Learning']}\n• Large Language Models (LLM): ${skills.percentages.LLM}\n• Python Programming: ${skills.percentages.Python}\n• SQL Database Management: ${skills.percentages.SQL}\n\n🎯 **Mahmudul's Core Specialties**:\n${skills.specialties.slice(0,6).map(spec => `• ${spec}`).join('\n')}\n\n💡 **What makes Mahmudul unique**: **His combination** of strong programming fundamentals with cutting-edge AI/ML expertise allows **him** to build production-ready intelligent systems that solve real-world problems!\n\nWhich of **Mahmudul's** technical skills interests you most for your project?`;
         }
 
-        // Projects inquiry
-        if (this.containsAny(message, ['projects', 'work', 'portfolio', 'built', 'created', 'developed'])) {
+        // Projects inquiry - Enhanced with specific details
+        if (this.containsAny(message, ['projects', 'work', 'portfolio', 'built', 'created', 'developed', 'what did he build', 'show me his work'])) {
             const projects = this.knowledgeBase.projects;
-            let response = "Mahmudul has created some amazing projects! 🚀 Here are his latest works:\n\n";
+            let response = "Mahmudul has developed some incredible AI/ML projects! 🚀 Here are **Mahmudul's key projects**:\n\n";
+            
             projects.forEach((project, index) => {
-                response += `${index + 1}. **${project.name}**: ${project.description} Built with ${project.tech.join(', ')}. ${project.highlight} (GitHub: ${project.github})\n\n`;
+                response += `**${index + 1}. ${project.name}**\n`;
+                response += `📝 **What it does**: ${project.description}\n`;
+                response += `⚡ **Technologies**: ${project.tech.join(', ')}\n`;
+                response += `🎯 **Impact**: ${project.highlight}\n`;
+                response += `💻 **GitHub**: ${project.github}\n\n`;
             });
-            response += "All projects are available on his GitHub profile! Which project interests you the most?";
+            
+            response += "**All of Mahmudul's projects** showcase his expertise in AI, Machine Learning, and practical problem-solving. ";
+            response += "Each project demonstrates **his ability** to create real-world solutions. Which of **Mahmudul's projects** would you like to know more about?";
             return response;
         }
 
-        // Experience inquiry
-        if (this.containsAny(message, ['experience', 'years', 'background', 'career', 'professional', 'job'])) {
+        // Experience inquiry - Detailed about Mahmudul's career
+        if (this.containsAny(message, ['experience', 'years', 'background', 'career', 'professional', 'job', 'work history'])) {
             const exp = this.knowledgeBase.experience;
-            let response = `Mahmudul has excellent professional experience! 📈 Currently working as ${exp[0].position} at ${exp[0].company} where he ${exp[0].description.toLowerCase()}\n\nPrevious roles:\n`;
+            let response = `**Mahmudul's Professional Journey** is impressive! 📈\n\n🎯 **Current Position**: **Mahmudul** is currently working as **${exp[0].position}** at ${exp[0].company} (${exp[0].duration})\n📝 **What he does**: ${exp[0].description}\n🛠️ **Key skills**: ${exp[0].skills.join(', ')}\n\n**Mahmudul's Previous Experience:**\n`;
+            
             exp.slice(1).forEach((job, index) => {
-                response += `• ${job.position} at ${job.company} (${job.duration}) - ${job.type ? job.type + ' - ' : ''}${job.description}\n`;
+                response += `\n${index + 2}. **${job.position}** at ${job.company} (${job.duration})`;
+                if (job.type) response += ` - ${job.type}`;
+                response += `\n   📋 **Responsibilities**: ${job.description}\n   ⚡ **Skills developed**: ${job.skills.join(', ')}\n`;
             });
-            response += `\nHe's gained expertise in ${exp[0].skills.concat(exp[1].skills).slice(0,6).join(', ')}. Want to know about any specific role?`;
+            
+            const allSkills = [...new Set(exp.flatMap(job => job.skills))];
+            response += `\n🚀 **Overall Impact**: Through **his diverse experience**, **Mahmudul** has developed expertise in ${allSkills.slice(0,8).join(', ')} and more!\n\n💼 This combination makes **him** uniquely qualified for AI/ML development and full-stack web projects. Which aspect of **Mahmudul's** experience interests you most?`;
             return response;
         }
 
-        // Education inquiry
-        if (this.containsAny(message, ['education', 'study', 'university', 'college', 'degree', 'cgpa', 'gpa'])) {
+        // Education inquiry - Enhanced with specific details about Mahmudul
+        if (this.containsAny(message, ['education', 'study', 'university', 'college', 'degree', 'cgpa', 'gpa', 'academic', 'qualification'])) {
             const edu = this.knowledgeBase.education;
-            return `Mahmudul has an excellent educational background! 🎓\n\n🏫 **Current/Recent**: ${edu.university.degree} from ${edu.university.institution} (${edu.university.duration}) with CGPA ${edu.university.cgpa}\n\n🏆 **HSC**: ${edu.hsc.certificate} from ${edu.hsc.institution} with perfect GPA ${edu.hsc.gpa}\n\n🏆 **SSC**: ${edu.ssc.certificate} from ${edu.ssc.institution} with perfect GPA ${edu.ssc.gpa}\n\nHe's maintained excellent academic performance throughout his education!`;
+            return `**Mahmudul's Educational Background** is truly impressive! 🎓\n\n🏫 **Current Degree**: **Mahmudul** is completing his ${edu.university.degree} from ${edu.university.institution} (${edu.university.duration})\n📊 **Academic Excellence**: **Mahmudul** maintains an outstanding CGPA of ${edu.university.cgpa} out of 4.00\n🎯 **Session**: ${edu.university.session}\n\n🏆 **HSC Achievement**: **Mahmudul** earned his ${edu.hsc.certificate} from ${edu.hsc.institution} (${edu.hsc.duration}) with a perfect GPA of ${edu.hsc.gpa}\n\n🏆 **SSC Achievement**: **Mahmudul** completed his ${edu.ssc.certificate} from ${edu.ssc.institution} in ${edu.ssc.year} with a perfect GPA of ${edu.ssc.gpa}\n\n✨ **What this means**: **Mahmudul's** consistent academic excellence (perfect GPAs in school, high CGPA in university) demonstrates his dedication, intelligence, and strong work ethic - qualities that make him an exceptional AI/ML engineer!\n\nWould you like to know how **Mahmudul's** education contributes to his professional expertise?`;
         }
 
-        // Services inquiry
-        if (this.containsAny(message, ['services', 'what services', 'what can you do', 'offerings'])) {
+        // Services inquiry - What Mahmudul can do for you
+        if (this.containsAny(message, ['services', 'what services', 'what can you do', 'offerings', 'what does he offer', 'help with'])) {
             const services = this.knowledgeBase.services;
-            let response = "Mahmudul offers comprehensive professional services! 💼\n\n";
+            let response = "**Mahmudul offers comprehensive professional services** that can transform your business! 💼\n\n**What Mahmudul can do for you:**\n\n";
+            
             services.forEach((service, index) => {
-                response += `${index + 1}. **${service.title}**: ${service.description}\n\n`;
+                response += `**${index + 1}. ${service.title}**\n`;
+                response += `🎯 **How Mahmudul helps**: ${service.description}\n`;
+                response += `✨ **Why choose Mahmudul**: His proven expertise and real project experience\n\n`;
             });
-            response += "He can handle everything from AI development to web design! Which service interests you?";
+            
+            response += `🚀 **Mahmudul's Advantage**: **He** combines technical excellence with practical business understanding, ensuring your project succeeds!\n\n📞 **Ready to work with Mahmudul?** Contact him at ${this.knowledgeBase.contact.email} or call ${this.knowledgeBase.contact.phone}\n\nWhich service would you like **Mahmudul** to help you with?`;
             return response;
         }
 
@@ -454,9 +792,190 @@ class MahmudulAssistant {
             return `You're so welcome! 😊 I'm glad I could help! Mahmudul would be thrilled to hear your positive feedback. If you have any more questions about his work, skills, or if you'd like to start a project together, don't hesitate to reach out. He's always excited to connect with new people and work on interesting challenges!`;
         }
 
-        // Default response with context
-        const contextualResponse = this.getRandomResponse(this.responsePatterns.unknownResponse);
-        return `${contextualResponse} Mahmudul specializes in ${this.knowledgeBase.skills.technologies.slice(0,3).join(', ')}, has ${this.knowledgeBase.experience.length} years of professional experience, and has created projects like ${this.knowledgeBase.projects[0].name} and ${this.knowledgeBase.projects[1].name}. What specific aspect interests you most? 🤔`;
+        // Check if question is portfolio-related
+        const isPortfolioRelated = this.isPortfolioRelated(message);
+        
+        if (!isPortfolioRelated) {
+            return this.handleIrrelevantQuestion(message);
+        }
+
+        // Advanced context-aware default response for portfolio topics
+        const contextualResponse = this.getAdvancedContextResponse(message);
+        if (contextualResponse) {
+            return contextualResponse;
+        }
+
+        // Portfolio-focused unknown response
+        const portfolioResponse = [
+            "That's an interesting question about **Mahmudul**! Let me share what I know that might be relevant...",
+            "Great question! Based on **Mahmudul's** expertise and background...",
+            "I'd love to help you learn more about **Mahmudul**! Here's what I can tell you...",
+            "Excellent inquiry! **Mahmudul's** experience shows..."
+        ];
+        
+        const unknownResponse = this.getRandomResponse(portfolioResponse);
+        const suggestions = this.getTopicSuggestions();
+        
+        return `${unknownResponse}\n\n**About Mahmudul:**\n• 🤖 **AI/ML Expertise**: ${this.knowledgeBase.skills.aiml.slice(0,3).join(', ')}\n• 💼 **Current Role**: ${this.knowledgeBase.experience[0].position} at ${this.knowledgeBase.experience[0].company}\n• 🚀 **Notable Projects**: ${this.knowledgeBase.projects.slice(0,2).map(p => p.name).join(', ')}\n• � **Contact Mahmudul**: ${this.knowledgeBase.contact.email}\n\n${suggestions}\n\nWhat would you like to know about **Mahmudul's** work? 🤔`;
+    }
+    
+    detectTopic(message) {
+        const topics = {
+            skills: ['skills', 'programming', 'technologies', 'expertise', 'abilities'],
+            projects: ['projects', 'portfolio', 'work', 'built', 'created', 'developed'],
+            experience: ['experience', 'background', 'career', 'professional', 'job', 'work history'],
+            contact: ['contact', 'hire', 'reach', 'email', 'phone', 'call'],
+            education: ['education', 'study', 'university', 'degree', 'college'],
+            ai: ['ai', 'artificial intelligence', 'machine learning', 'ml', 'chatbot'],
+            personal: ['person', 'personality', 'about', 'who']
+        };
+        
+        for (const [topic, keywords] of Object.entries(topics)) {
+            if (this.containsAny(message, keywords)) {
+                return topic;
+            }
+        }
+        return 'general';
+    }
+    
+    getAdvancedContextResponse(message) {
+        // Advanced NLP-like understanding
+        const words = message.toLowerCase().split(' ');
+        
+        // Question word detection
+        const questionWords = ['what', 'how', 'why', 'when', 'where', 'who', 'which'];
+        const hasQuestion = questionWords.some(q => words.includes(q));
+        
+        // Sentiment analysis (basic)
+        const positiveWords = ['good', 'great', 'awesome', 'amazing', 'excellent', 'fantastic'];
+        const negativeWords = ['bad', 'poor', 'terrible', 'awful', 'difficult'];
+        
+        const sentiment = positiveWords.some(w => words.includes(w)) ? 'positive' : 
+                         negativeWords.some(w => words.includes(w)) ? 'negative' : 'neutral';
+        
+        // Compound query detection
+        if (words.includes('and') || words.includes('also')) {
+            return this.handleCompoundQuery(message);
+        }
+        
+        // Time-based queries
+        if (this.containsAny(message, ['when', 'time', 'schedule', 'available'])) {
+            return `Mahmudul is currently ${this.knowledgeBase.contact.freelance.toLowerCase()} for new projects and ${this.knowledgeBase.contact.availability.toLowerCase()}! 🕐 You can reach him at ${this.knowledgeBase.contact.email} or call ${this.knowledgeBase.contact.phone}. He typically responds within 24 hours and loves discussing new opportunities!`;
+        }
+        
+        // Comparison queries
+        if (this.containsAny(message, ['vs', 'versus', 'compare', 'difference', 'better'])) {
+            return `Great question! Mahmudul stands out because of his unique combination of skills: 
+            
+🤖 **AI/ML Expertise**: ${this.knowledgeBase.skills.percentages.NLP} NLP, ${this.knowledgeBase.skills.percentages['Machine Learning']} ML
+💻 **Full-Stack Development**: Web development + AI integration
+🎓 **Strong Academic Background**: ${this.knowledgeBase.education.university.cgpa} CGPA
+🏢 **Real Experience**: Currently ${this.knowledgeBase.experience[0].position} at ${this.knowledgeBase.experience[0].company}
+
+What specific comparison are you looking for?`;
+        }
+        
+        return null;
+    }
+    
+    handleCompoundQuery(message) {
+        const topics = [];
+        if (this.containsAny(message, ['skills', 'expertise'])) topics.push('skills');
+        if (this.containsAny(message, ['projects', 'portfolio'])) topics.push('projects');
+        if (this.containsAny(message, ['experience', 'background'])) topics.push('experience');
+        if (this.containsAny(message, ['contact', 'hire'])) topics.push('contact');
+        
+        if (topics.length >= 2) {
+            let response = "Great! You want to know about multiple aspects. Here's a comprehensive overview:\n\n";
+            
+            if (topics.includes('skills')) {
+                response += `🛠️ **Skills**: ${this.knowledgeBase.skills.programming.slice(0,3).join(', ')} + ${this.knowledgeBase.skills.aiml.slice(0,2).join(', ')}\n\n`;
+            }
+            if (topics.includes('projects')) {
+                response += `🚀 **Projects**: ${this.knowledgeBase.projects.slice(0,2).map(p => p.name).join(', ')}\n\n`;
+            }
+            if (topics.includes('experience')) {
+                response += `💼 **Experience**: ${this.knowledgeBase.experience[0].position} at ${this.knowledgeBase.experience[0].company}\n\n`;
+            }
+            if (topics.includes('contact')) {
+                response += `📞 **Contact**: ${this.knowledgeBase.contact.email} | ${this.knowledgeBase.contact.phone}\n\n`;
+            }
+            
+            response += "Would you like me to elaborate on any specific area?";
+            return response;
+        }
+        
+        return null;
+    }
+    
+    isPortfolioRelated(message) {
+        const portfolioKeywords = [
+            // About Mahmudul
+            'mahmudul', 'rifat', 'hasan', 'about him', 'about you',
+            
+            // Professional terms
+            'skills', 'experience', 'projects', 'work', 'portfolio', 'career', 'professional',
+            'developer', 'engineer', 'programmer', 'ai', 'ml', 'machine learning', 'artificial intelligence',
+            
+            // Education & Background
+            'education', 'university', 'degree', 'study', 'background', 'qualification',
+            
+            // Contact & Hiring
+            'contact', 'hire', 'email', 'phone', 'reach', 'availability', 'freelance',
+            
+            // Technical
+            'python', 'javascript', 'programming', 'coding', 'development', 'web', 'database',
+            'chatbot', 'nlp', 'deep learning', 'data', 'analysis',
+            
+            // Services
+            'services', 'help', 'build', 'create', 'develop', 'design', 'solution'
+        ];
+        
+        const message_lower = message.toLowerCase();
+        return portfolioKeywords.some(keyword => message_lower.includes(keyword));
+    }
+    
+    handleIrrelevantQuestion(message) {
+        const redirectResponses = [
+            "I appreciate your question, but I'm specifically designed to help you learn about **Mahmudul Hasan** and his professional work! 🎯",
+            "That's an interesting topic, but I'm **Mahmudul's portfolio assistant** - I focus on sharing information about his skills, projects, and experience! 💼",
+            "I'd love to help, but my expertise is all about **Mahmudul** - his AI/ML projects, technical skills, and professional background! 🤖",
+            "Great question! However, I'm specialized in discussing **Mahmudul's** portfolio, work experience, and technical capabilities! 🚀"
+        ];
+        
+        const redirect = this.getRandomResponse(redirectResponses);
+        
+        const portfolioSuggestions = [
+            "What are **Mahmudul's** main AI/ML skills?",
+            "Tell me about **Mahmudul's** latest projects",
+            "How can I contact or hire **Mahmudul**?",
+            "What's **Mahmudul's** professional experience?",
+            "What services does **Mahmudul** offer?",
+            "Show me **Mahmudul's** educational background"
+        ];
+        
+        const randomSuggestions = portfolioSuggestions
+            .sort(() => 0.5 - Math.random())
+            .slice(0, 4);
+        
+        return `${redirect}\n\n**Let's talk about Mahmudul! Here are some great questions you could ask:**\n${randomSuggestions.map(q => `• ${q}`).join('\n')}\n\n💡 I'm here to help you discover why **Mahmudul** would be perfect for your AI/ML or web development needs! What would you like to know about **his work**?`;
+    }
+    
+    getTopicSuggestions() {
+        const recentTopics = this.messageHistory.slice(-3).map(m => this.detectTopic(m.content));
+        const unusedTopics = [
+            { topic: 'skills', label: "Mahmudul's technical skills" },
+            { topic: 'projects', label: "Mahmudul's AI/ML projects" },
+            { topic: 'experience', label: "Mahmudul's work experience" },
+            { topic: 'contact', label: "How to hire Mahmudul" },
+            { topic: 'education', label: "Mahmudul's educational background" },
+            { topic: 'services', label: "Services Mahmudul offers" }
+        ].filter(t => !recentTopics.includes(t.topic));
+        
+        if (unusedTopics.length > 0) {
+            return `\n💡 **You might also want to ask about**: ${unusedTopics.slice(0,2).map(t => t.label).join(', ')}`;
+        }
+        return '\n💡 **Feel free to ask anything about Mahmudul\'s professional work!**';
     }
 
     containsAny(text, keywords) {
@@ -468,21 +987,101 @@ class MahmudulAssistant {
     }
 }
 
-// Initialize the chatbot when the page loads
+// Global chatbot instance
+let chatbot = null;
+
+// Initialize the enhanced chatbot when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-    new MahmudulAssistant();
+    try {
+        chatbot = new MahmudulAssistant();
+        
+        // Load previous conversation if exists
+        chatbot.loadConversation();
+        
+        console.log('✅ Enhanced Mahmudul Assistant chatbot initialized successfully!');
+        
+        // Add performance monitoring
+        chatbot.startTime = Date.now();
+        
+        // Add smart notifications
+        setTimeout(() => {
+            if (!chatbot.isOpen && chatbot.messageHistory.length === 0) {
+                chatbot.showSmartNotification();
+            }
+        }, 15000); // Show after 15 seconds if no interaction
+        
+    } catch (error) {
+        console.error('❌ Chatbot initialization failed:', error);
+    }
 });
 
-// Add some fun interactions
+// Enhanced periodic notifications with intelligence
 document.addEventListener('DOMContentLoaded', () => {
-    // Show notification periodically
-    setInterval(() => {
+    let notificationCount = 0;
+    const maxNotifications = 3; // Limit notifications to avoid annoyance
+    
+    const showPeriodicNotification = () => {
         const notification = document.getElementById('chat-notification');
-        if (notification && !document.querySelector('.chatbot-window.show')) {
+        
+        if (notification && !document.querySelector('.chatbot-window.show') && 
+            notificationCount < maxNotifications && chatbot && chatbot.messageHistory.length === 0) {
+            
+            // Smart notification messages
+            const messages = [
+                '💬 Questions about Mahmudul?',
+                '🤖 AI Assistant ready to help!',
+                '🚀 Ask me about his projects!'
+            ];
+            
+            notification.textContent = messages[notificationCount];
             notification.style.display = 'flex';
+            notification.style.animation = 'pulse 2s infinite';
+            
             setTimeout(() => {
                 notification.style.display = 'none';
-            }, 3000);
+                notification.style.animation = '';
+            }, 4000);
+            
+            notificationCount++;
         }
-    }, 30000); // Show every 30 seconds if chat is closed
+    };
+    
+    // Show first notification after 30 seconds, then every 45 seconds
+    setTimeout(showPeriodicNotification, 30000);
+    setInterval(showPeriodicNotification, 45000);
 });
+
+// Add enhanced chatbot methods
+if (typeof MahmudulAssistant !== 'undefined') {
+    MahmudulAssistant.prototype.showSmartNotification = function() {
+        const notification = document.getElementById('chat-notification');
+        if (notification && !this.isOpen) {
+            const smartMessages = [
+                "👋 Hi! I'm Mahmudul's AI assistant",
+                "💡 Got questions about Mahmudul?",
+                "🚀 Ready to help with any queries!"
+            ];
+            
+            notification.textContent = smartMessages[Math.floor(Math.random() * smartMessages.length)];
+            notification.style.display = 'flex';
+            notification.classList.add('pulse-animation');
+            
+            setTimeout(() => {
+                notification.style.display = 'none';
+                notification.classList.remove('pulse-animation');
+            }, 5000);
+        }
+    };
+    
+    // Add keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === '/' && chatbot) {
+            e.preventDefault();
+            chatbot.toggleChat();
+        }
+        
+        if (e.key === 'Escape' && chatbot && chatbot.isOpen) {
+            chatbot.closeChat();
+        }
+    });
+}
